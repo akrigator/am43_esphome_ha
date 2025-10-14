@@ -1,10 +1,13 @@
 esphome:
   name: am43
-  platform: ESP32
-  board: esp-wrover-kit
   on_boot:
     - script.execute: main_loop
     - script.wait: main_loop
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
 
 wifi:
   ssid: !secret wifi_ssid
@@ -16,243 +19,94 @@ logger:
 api:
 
 ota:
-  password: "f3c4853547d70265da463e82f7d66947"
-   
-esp32_ble_tracker:
-
-globals:
-  - id: position
-    type: int
-    restore_value: no
+  password: "b3432291afce89955ffe965dfa143cb7"
+  platform: esphome
   
 ble_client:
+
   - mac_address: 02:7B:F1:3A:C6:63
     id: bedroom_left_blind
     on_connect:
       - binary_sensor.template.publish:
-          id: bedroom_left_blind_connected
+          id: left_connected
           state: ON
+      - logger.log: 
+          format: "CONNECT LEFT"
+          level: INFO
     on_disconnect:
       - binary_sensor.template.publish:
-          id: bedroom_left_blind_connected
+          id: left_connected
           state: OFF
+      - logger.log: 
+          format: "DISCONNECT LEFT"
+          level: INFO
           
   - mac_address: 02:BD:67:49:4B:0D
     id: bedroom_right_blind
     on_connect:
       - binary_sensor.template.publish:
-          id: bedroom_right_blind_connected
+          id: right_connected
           state: ON
+      - logger.log: 
+          format: "CONNECT RIGHT"
+          level: INFO
     on_disconnect:
       - binary_sensor.template.publish:
-          id: bedroom_right_blind_connected
+          id: right_connected
           state: OFF
-
-cover:
-  - platform: am43
-    id: bedroom_left_blind_cover_internal
-    ble_client_id: bedroom_left_blind
-    pin: 1234
-    internal: true
-    
-  - platform: am43
-    id: bedroom_right_blind_cover_internal
-    ble_client_id: bedroom_right_blind
-    pin: 1234
-    internal: true
-    
-  - platform: template
-    name: "Bedroom Blinds"
-    id: bedroom_blinds_cover
-    has_position: true
-    lambda: |-
-      return (id(bedroom_left_blind_cover_internal).position + id(bedroom_right_blind_cover_internal).position) / 2;
-    open_action:
-      then:
-        - script.execute: open_action
-        - script.wait: open_action
-    close_action:
-      then:
-        - script.execute: close_action
-        - script.wait: close_action
-    stop_action:
-      then:
-        - script.execute: stop_action
-        - script.wait: stop_action
-    position_action:
-      then:
-        - lambda: |-
-            id(position)=pos;
-        - script.execute: position_action
-        - script.wait: position_action
-
-script:
-  - id: open_action
-    mode: restart
-    then:
-      - script.execute: enable_ble
-      - script.wait: enable_ble
-      - if:
-          condition:
-            and:
-              - binary_sensor.is_on: bedroom_left_blind_connected
-              - binary_sensor.is_on: bedroom_right_blind_connected
-          then:
-            - cover.open: bedroom_left_blind_cover_internal
-            - cover.open: bedroom_right_blind_cover_internal
-    
-  - id: close_action
-    mode: restart
-    then:
-      - script.execute: enable_ble
-      - script.wait: enable_ble
-      - if:
-          condition:
-            and:
-              - binary_sensor.is_on: bedroom_left_blind_connected
-              - binary_sensor.is_on: bedroom_right_blind_connected
-          then:
-            - cover.close: bedroom_left_blind_cover_internal
-            - cover.close: bedroom_right_blind_cover_internal   
-    
-  - id: stop_action
-    mode: restart
-    then:
-      - script.execute: enable_ble
-      - script.wait: enable_ble
-      - if:
-          condition:
-            and:
-              - binary_sensor.is_on: bedroom_left_blind_connected
-              - binary_sensor.is_on: bedroom_right_blind_connected
-          then:
-            - cover.stop: bedroom_left_blind_cover_internal
-            - cover.stop: bedroom_right_blind_cover_internal
-    
-  - id: position_action
-    mode: restart
-    then:
-      - script.execute: enable_ble
-      - script.wait: enable_ble
-      - if:
-          condition:
-            and:
-              - binary_sensor.is_on: bedroom_left_blind_connected
-              - binary_sensor.is_on: bedroom_right_blind_connected
-          then:
-            - lambda: |-
-                auto call = id(bedroom_left_blind_cover_internal).make_call();
-                call.set_position(id(position));
-                call.perform();
-                call = id(bedroom_right_blind_cover_internal).make_call();
-                call.set_position(id(position));
-                call.perform();
-    
-  - id: enable_ble
-    mode: restart
-    then:
       - logger.log: 
-          format: "Enabling BLE..."
+          format: "DISCONNECT RIGHT"
           level: INFO
-      - switch.turn_on: bedroom_left_blind_ble
-      - switch.turn_on: bedroom_right_blind_ble
-      - wait_until:
-          condition:
-            and:
-              - binary_sensor.is_on: bedroom_left_blind_connected
-              - binary_sensor.is_on: bedroom_right_blind_connected
-          timeout: 3min
-      - if:
-          condition:
-            and:
-              - binary_sensor.is_on: bedroom_left_blind_connected
-              - binary_sensor.is_on: bedroom_right_blind_connected
-          then: 
-            - logger.log: 
-                format: "BLE clients connected"
-                level: INFO
-          else: 
-            - logger.log: 
-                format: "Fail connect BLE clients"
-                level: WARN
 
-  - id: disable_ble
-    mode: restart
-    then:
-      - logger.log: 
-          format: "Disabling BLE..."
-          level: INFO
-      - switch.turn_off: bedroom_left_blind_ble
-      - switch.turn_off: bedroom_right_blind_ble
-
-  - id: sleeping_ble
-    mode: restart
-    then:
-      - while: 
-          condition:
-            not:
-              and:
-                - binary_sensor.is_on: bedroom_left_blind_connected
-                - binary_sensor.is_on: bedroom_right_blind_connected
-          then:
-            - logger.log: 
-                format: "Conencting BLE again..."
-                level: INFO
-            - script.execute: enable_ble
-            - script.wait: enable_ble
-            
-      - logger.log: 
-          format: "Updating sensors..."
-          level: INFO
-      - delay: 2min
-      
-      - logger.log: 
-          format: "Check that scripts not running..."
-          level: INFO
-      - while: 
-          condition:
-            or:
-              - script.is_running: open_action
-              - script.is_running: close_action
-              - script.is_running: stop_action
-              - script.is_running: position_action
-          then:
-            - logger.log: 
-                format: "Still executing..."
-                level: INFO
-            - delay: 10s
-      - script.execute: disable_ble
-      - script.wait: disable_ble
-
-  - id: main_loop
-    mode: single
-    then:
-      - while:
-          condition:
-            - lambda: "return true;"
-          then:
-            - script.execute: sleeping_ble
-            - script.wait: sleeping_ble
-            - delay: 60min
-  
 binary_sensor:
+
   - platform: template
-    name: "Bedroom Left Blind Connected"
-    id: bedroom_left_blind_connected
+    device_class: connectivity
+    id: left_connected
+    name: "Left connected"
+
   - platform: template
-    name: "Bedroom Right Blind Connected"
-    id: bedroom_right_blind_connected
+    device_class: connectivity
+    id: right_connected
+    name: "Right connected"
+
+  - platform: template
+    device_class: opening
+    id: left_open_status
+    name: "Left status"
+
+  - platform: template
+    device_class: opening
+    id: right_open_status
+    name: "Right status"
 
 sensor:
+
   - platform: uptime
     name: Uptime Sensor
+
+  # - platform: ble_client
+  #   id: bedroom_left_blind_rssi
+  #   type: rssi
+  #   ble_client_id: bedroom_left_blind
+  #   name: "Bedroom Left Blind RSSI"
+
+  # - platform: ble_client
+  #   id: bedroom_right_blind_rssi
+  #   type: rssi
+  #   ble_client_id: bedroom_right_blind
+  #   name: "Bedroom Right Blind RSSI"
+  
   - platform: ble_rssi
+    id: bedroom_left_blind_rssi
     mac_address: 02:7B:F1:3A:C6:63
     name: "Bedroom Left Blind RSSI"
+
   - platform: ble_rssi
+    id: bedroom_right_blind_rssi
     mac_address: 02:BD:67:49:4B:0D
     name: "Bedroom Right Blind RSSI"
-  
+
   - platform: am43
     ble_client_id: bedroom_left_blind
     illuminance:
@@ -263,6 +117,7 @@ sensor:
       name: "Bedroom Left Blind Battery"
       filters:
         - filter_out: nan
+    update_interval: 30sec
     
   - platform: am43
     ble_client_id: bedroom_right_blind
@@ -274,21 +129,256 @@ sensor:
       name: "Bedroom Right Blind Battery"
       filters:
         - filter_out: nan
+    update_interval: 30sec
 
 switch:
+
   - platform: restart
     name: "Bedroom Blind ESP Reboot"
     
   - platform: ble_client
     name: "Bedroom Left Blind BLE"
     id: bedroom_left_blind_ble
-    internal: true
     ble_client_id: bedroom_left_blind
-    disabled_by_default: true
       
   - platform: ble_client
     name: "Bedroom Right Blind BLE"
     id: bedroom_right_blind_ble
-    internal: true
     ble_client_id: bedroom_right_blind
-    disabled_by_default: true
+
+cover:
+  
+  - platform: am43
+    id: bedroom_left_blind_cover_internal
+    ble_client_id: bedroom_left_blind
+    pin: 1234
+    internal: true
+    on_open:
+      - binary_sensor.template.publish:
+          id: left_open_status
+          state: ON
+    on_closed:
+      - binary_sensor.template.publish:
+          id: left_open_status
+          state: OFF
+
+  - platform: am43
+    id: bedroom_right_blind_cover_internal
+    ble_client_id: bedroom_right_blind
+    pin: 1234
+    internal: true
+    on_open:
+      - binary_sensor.template.publish:
+          id: right_open_status
+          state: ON
+    on_closed:
+      - binary_sensor.template.publish:
+          id: right_open_status
+          state: OFF
+    
+  - platform: template
+    name: "Bedroom Blinds"
+    id: bedroom_blinds_cover
+    has_position: true
+    lambda: |-
+      return (id(bedroom_left_blind_cover_internal).position + id(bedroom_right_blind_cover_internal).position) / 2;
+    open_action:
+      then:
+        - script.execute: open_action
+    close_action:
+      then:
+        - script.execute: close_action
+    stop_action:
+      then:
+        - script.execute: stop_action
+    position_action:
+      then:
+        - script.execute: 
+            id: position_action
+            value: !lambda return pos;
+
+script:
+
+  - id: open_action
+    mode: restart
+    then:
+      - script.stop: close_action
+      - script.stop: stop_action
+      - script.stop: position_action
+      - script.stop: update_sensors
+      - logger.log: 
+          format: "Open ..."
+          level: INFO
+      - script.execute: enable_ble
+      - script.wait: enable_ble
+      - cover.open: bedroom_left_blind_cover_internal
+      - cover.open: bedroom_right_blind_cover_internal
+      - while:
+          condition:
+            not:
+              and:
+                - binary_sensor.is_on: left_open_status
+                - binary_sensor.is_on: right_open_status
+          then:
+            - logger.log: 
+                format: "... opening ..."
+                level: INFO
+            - delay: 1sec
+      - logger.log: 
+          format: "... opened"
+          level: INFO
+      - script.execute: update_sensors
+    
+  - id: close_action
+    mode: restart
+    then:
+      - script.stop: open_action
+      - script.stop: stop_action
+      - script.stop: position_action
+      - script.stop: update_sensors
+      - logger.log: 
+          format: "Close ..."
+          level: INFO
+      - script.execute: enable_ble
+      - script.wait: enable_ble
+      - cover.close: bedroom_left_blind_cover_internal
+      - cover.close: bedroom_right_blind_cover_internal
+      - while:
+          condition:
+            not:
+              and:
+                - binary_sensor.is_off: left_open_status
+                - binary_sensor.is_off: right_open_status
+          then:
+            - logger.log: 
+                format: "... closing ..."
+                level: INFO
+            - delay: 1sec
+      - logger.log: 
+          format: "... closed"
+          level: INFO
+      - script.execute: update_sensors
+    
+  - id: stop_action
+    mode: restart
+    then:
+      - script.stop: open_action
+      - script.stop: close_action
+      - script.stop: position_action
+      - script.stop: update_sensors
+      - logger.log: 
+          format: "Stop ..."
+          level: INFO
+      - script.execute: enable_ble
+      - script.wait: enable_ble
+      - cover.stop: bedroom_left_blind_cover_internal
+      - cover.stop: bedroom_right_blind_cover_internal
+      - logger.log: 
+          format: "... stoped"
+          level: INFO
+      - script.execute: update_sensors
+    
+  - id: position_action
+    mode: restart
+    parameters:
+      value: float
+    then:
+      - script.stop: open_action
+      - script.stop: close_action
+      - script.stop: stop_action
+      - script.stop: update_sensors
+      - logger.log: 
+          format: "Set position %f ..."
+          level: INFO
+          args: [ value ]
+      - script.execute: enable_ble
+      - script.wait: enable_ble
+      - cover.control:
+          id: bedroom_left_blind_cover_internal
+          position: !lambda return value;
+      - cover.control:
+          id: bedroom_right_blind_cover_internal
+          position: !lambda return value;
+      - script.execute: update_sensors
+    
+  - id: enable_ble
+    mode: restart
+    then:
+      - script.stop: disable_ble
+      - logger.log: 
+          format: "Enabling BLE..."
+          level: INFO
+      - if:
+          condition:
+            - switch.is_off: bedroom_left_blind_ble
+          then:
+            - switch.turn_on: bedroom_left_blind_ble
+      - if:
+          condition:
+            - switch.is_off: bedroom_right_blind_ble
+          then:
+            - switch.turn_on: bedroom_right_blind_ble
+      - while:
+          condition:
+            not:
+              and:
+                - binary_sensor.is_on: left_connected
+                - binary_sensor.is_on: right_connected
+          then:
+            - logger.log: 
+                format: "... waiting connection ..."
+                level: INFO
+            - delay: 1sec
+      - logger.log: 
+          format: "...BLE enabled"
+          level: INFO
+
+  - id: disable_ble
+    mode: single
+    then:
+      - logger.log: 
+          format: "Disabling BLE ..."
+          level: INFO
+      - switch.turn_off: bedroom_left_blind_ble
+      - switch.turn_off: bedroom_right_blind_ble
+      - logger.log: 
+          format: "... BLE disabled"
+          level: INFO
+
+  - id: update_sensors
+    mode: single
+    then:
+      - logger.log: 
+          format: "Updating sensor ..."
+          level: INFO
+      - script.execute: enable_ble
+      - script.wait: enable_ble
+      - delay: 1min
+      - while: 
+          condition:
+            or:
+              - script.is_running: open_action
+              - script.is_running: close_action
+              - script.is_running: stop_action
+              - script.is_running: position_action
+          then:
+            - logger.log: 
+                format: "... domething Still executing ..."
+                level: INFO
+            - delay: 10s
+      - script.execute: disable_ble
+      - script.wait: disable_ble
+      - logger.log: 
+          format: "... sensors updated"
+          level: INFO
+
+  - id: main_loop
+    mode: single
+    then:
+      - while:
+          condition:
+            - lambda: "return true;"
+          then:
+            - script.execute: update_sensors
+            - script.wait: update_sensors
+            - delay: 60min
